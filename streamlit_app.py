@@ -20,10 +20,12 @@ try:
     model = joblib.load('xgboost_model.pkl')
     if not os.path.exists('scaler.pkl'):
         st.error("scaler.pkl文件未找到！")
+        scaler = None  # 初始化scaler为None
     else:
         scaler = joblib.load('scaler.pkl')
 except Exception as e:
     st.error(f"加载scaler失败: {str(e)}")
+    scaler = None  # 初始化scaler为None
 
 # 页面标题
 st.title('血红蛋白(HGB)预测系统')
@@ -48,14 +50,14 @@ with st.form("prediction_form"):
     # 使用columns分栏布局
     col1, col2 = st.columns(2)
     with col1:
-        age = st.number_input("年龄", min_value=0, max_value=100, value=30)
-        height = st.number_input("身高 (cm)", min_value=20.0, max_value=250.0, value=170.0, step=0.1)
-        blood_transfusion = st.number_input("本次输血量 (U)", min_value=0, max_value=12, value=0)
+        age = st.number_input("年龄", min_value=0, max_value=100, value=18)
+        height = st.number_input("身高 (cm)", min_value=20.0, max_value=250.0, value=100, step=0.1)
+        blood_transfusion = st.number_input("本次输血量 (U)", min_value=0, max_value=12, value=2)
         
     with col2:
         gender = st.selectbox("性别", ["男", "女"], index=0)
-        weight = st.number_input("体重 (kg)", min_value=10.0, max_value=200.0, value=70.0, step=0.1)
-        hgb_before = st.number_input("HGB前值 (g/L)", min_value=20, max_value=200, value=120, help="输血前血红蛋白浓度")
+        weight = st.number_input("体重 (kg)", min_value=10.0, max_value=200.0, value=30, step=0.1)
+        hgb_before = st.number_input("HGB前值 (g/L)", min_value=20, max_value=200, value=60, help="输血前血红蛋白浓度")
 
     submitted = st.form_submit_button("开始预测")
 
@@ -69,45 +71,52 @@ if submitted:  # 注意这个判断在with语句块外
                                 columns=['年龄', '性别', '身高', '体重', '本次输血量', 'HGB前'])
 
         # 数据缩放
-        scaled_data = scaler.transform(input_data)
+        if scaler is not None:
+            scaled_data = scaler.transform(input_data)
+        else:
+            st.error("无法进行预测，因为scaler未正确加载。")
+            scaled_data = None
 
-        # 预测
-        prediction = model.predict(scaled_data)
+        if scaled_data is not None:
+            # 预测
+            prediction = model.predict(scaled_data)
 
-        # 优化结果显示
-        st.metric(label="预测HGB值", value=f"{prediction[0]:.2f} g/L", delta=f"较输血前变化 {prediction[0]-hgb_before:.2f}g/L")
-        st.caption("注：预测结果仅供参考，实际临床决策需结合其他检查指标")
+            # 优化结果显示
+            st.metric(label="预测HGB值", value=f"{prediction[0]:.2f} g/L", delta=f"较输血前变化 {prediction[0]-hgb_before:.2f}g/L")
+            st.caption("注：预测结果仅供参考，实际临床决策需结合其他检查指标")
 
-        # 新增SHAP解释器
-        explainer = shap.Explainer(model)
-        shap_values = explainer.shap_values(scaled_data)
-        
-        # 创建SHAP可视化
-        st.subheader("特征影响分析")
-        
-        # 方式1：使用瀑布图（推荐单个预测解释）
-        fig, ax = plt.subplots()
-        shap.plots.waterfall(shap.Explanation(values=shap_values[0], 
-                                            base_values=explainer.expected_value,
-                                            data=scaled_data[0],
-                                            feature_names=input_data.columns),
-                            max_display=10,
-                            show=False)
-        st.pyplot(fig)
-        
-        # 方式2：使用force_plot（需要安装ipython）
-        # force_plot = shap.force_plot(explainer.expected_value,
-        #                             shap_values[0],
-        #                             scaled_data[0],
-        #                             feature_names=input_data.columns,
-        #                             matplotlib=False)
-        # st.components.v1.html(force_plot.html(), height=400)
-        
-        # 在SHAP可视化后添加特征重要性说明
-        st.markdown("""
-        **图例说明：**
-        -  红色特征：提升最终预测值
-        -  蓝色特征：降低最终预测值
-        - 条形长度：影响程度绝对值
-        - 基础值：{:.2f} (模型在训练集上的平均预测值)
-        """.format(explainer.expected_value))
+            # 新增SHAP解释器
+            explainer = shap.Explainer(model)
+            shap_values = explainer.shap_values(scaled_data)
+            
+            # 创建SHAP可视化
+            st.subheader("特征影响分析")
+            
+            # 方式1：使用瀑布图（推荐单个预测解释）
+            fig, ax = plt.subplots()
+            shap.plots.waterfall(shap.Explanation(values=shap_values[0], 
+                                                base_values=explainer.expected_value,
+                                                data=scaled_data[0],
+                                                feature_names=input_data.columns),
+                                max_display=10,
+                                show=False)
+            st.pyplot(fig)
+            
+            # 方式2：使用force_plot（需要安装ipython）
+            # force_plot = shap.force_plot(explainer.expected_value,
+            #                             shap_values[0],
+            #                             scaled_data[0],
+            #                             feature_names=input_data.columns,
+            #                             matplotlib=False)
+            # st.components.v1.html(force_plot.html(), height=400)
+            
+            # 在SHAP可视化后添加特征重要性说明
+            st.markdown("""
+            **图例说明：**
+            -  红色特征：提升最终预测值
+            -  蓝色特征：降低最终预测值
+            - 条形长度：影响程度绝对值
+            - 基础值：{:.2f} (模型在训练集上的平均预测值)
+            """.format(explainer.expected_value))
+        else:
+            st.error("无法生成SHAP解释，因为scaler未正确加载。")
