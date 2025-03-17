@@ -5,6 +5,7 @@ from sklearn.preprocessing import StandardScaler
 import time
 import shap  # 新增import语句
 import matplotlib.pyplot as plt  # 新增import语句
+import os  # 新增import语句
 
 # 主题配置
 st.set_page_config(
@@ -15,8 +16,14 @@ st.set_page_config(
 )
 
 # 加载模型和缩放器
-model = joblib.load('xgboost_model.pkl')
-scaler = joblib.load('scaler.pkl')
+try:
+    model = joblib.load('xgboost_model.pkl')
+    if not os.path.exists('scaler.pkl'):
+        st.error("scaler.pkl文件未找到！")
+    else:
+        scaler = joblib.load('scaler.pkl')
+except Exception as e:
+    st.error(f"加载scaler失败: {str(e)}")
 
 # 页面标题
 st.title('血红蛋白(HGB)预测系统')
